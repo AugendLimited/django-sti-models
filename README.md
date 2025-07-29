@@ -25,6 +25,10 @@ poetry add django-sti-models
 pip install django-sti-models
 ```
 
+**Requirements:**
+- Django >= 4.2
+- Python >= 3.8
+
 ## Quick Start
 
 ### 1. Define Your Base Model

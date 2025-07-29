@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "django-sti-models"
-version = "0.1.0"
+version = "0.1.1"
 description = "Improved Django Single Table Inheritance (STI) models with admin integration and advanced utilities"
 authors = ["Konrad Beck <konrad.beck@gmail.com>"]
 readme = "README.md"
@@ -10,11 +10,10 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Web Environment",
     "Framework :: Django",
-    "Framework :: Django :: 3.2",
-    "Framework :: Django :: 4.0",
-    "Framework :: Django :: 4.1",
     "Framework :: Django :: 4.2",
     "Framework :: Django :: 5.0",
+    "Framework :: Django :: 5.1",
+    "Framework :: Django :: 5.2",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
@@ -31,7 +30,7 @@ classifiers = [
 
 [tool.poetry.dependencies]
 python = "^3.8"
-django = "^3.2"
+django = "^4.2"
 typing-extensions = "^4.0"
 
 [tool.poetry.group.dev.dependencies]

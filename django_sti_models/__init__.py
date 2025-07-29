@@ -5,7 +5,7 @@ A modern, type-safe implementation of Single Table Inheritance (STI) for Django
 with improved monkey patching and better performance.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __author__ = "Konrad Beck"
 __email__ = "konrad.beck@gmail.com"
 
