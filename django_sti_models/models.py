@@ -128,12 +128,20 @@ class TypedModelMeta(ModelBase):
             from django.apps import apps
             apps.check_apps_ready()
             
+            # Check if any base has a TypeField
             has_typed_model_base = any(
                 hasattr(base, '_meta') and 
                 hasattr(base._meta, 'fields_map') and
                 any(isinstance(field, TypeField) for field in base._meta.fields_map.values())
                 for base in bases
             )
+            
+            # Also check if this model itself has a TypeField (for abstract bases)
+            if not has_typed_model_base:
+                has_typed_model_base = (
+                    hasattr(cls._meta, 'fields_map') and
+                    any(isinstance(field, TypeField) for field in cls._meta.fields_map.values())
+                )
         except Exception:
             # Django app registry not ready, skip processing
             has_typed_model_base = False
@@ -164,8 +172,14 @@ class TypedModelMeta(ModelBase):
                 base_typed_model = base
                 break
 
+        # If no base typed model found, check if this model itself has a TypeField
         if base_typed_model is None:
-            return
+            if (hasattr(cls._meta, 'fields_map') and
+                any(isinstance(field, TypeField) for field in cls._meta.fields_map.values())):
+                # This model is the base typed model
+                base_typed_model = cls
+            else:
+                return
 
         # Set up the type field
         mcs._setup_type_field(cls, base_typed_model)
