@@ -303,22 +303,19 @@ class TypedModelMeta(ModelBase):
     @classmethod
     def _force_table_inheritance(mcs, cls: Type[T], base_sti_model: Type[T]) -> None:
         """Force the subclass to use the base model's table."""
-        # Set the same db_table
-        cls._meta.db_table = base_sti_model._meta.db_table
+        # Set the same db_table as the base model
+        base_table_name = base_sti_model._meta.db_table
+        cls._meta.db_table = base_table_name
         
-        # Override get_db_table to prevent Django from creating separate tables
-        original_get_db_table = cls._meta.get_db_table
-        
-        def get_db_table():
-            return base_sti_model._meta.db_table
-            
-        cls._meta.get_db_table = get_db_table
-        
-        # Ensure managed is True so Django doesn't skip migrations
+        # Ensure the model is managed (not unmanaged)
         cls._meta.managed = True
         
-        # Mark for special migration handling
+        # Mark as STI model sharing a table
         cls._meta.sti_table_shared = True
+        cls._meta.sti_shared_table_name = base_table_name
+        
+        # Store reference to the base model for later use
+        cls._meta.sti_base_model_ref = base_sti_model
 
     @classmethod
     def _register_sti_type(mcs, cls: Type[T], base_sti_model: Type[T]) -> None:
@@ -569,4 +566,39 @@ class TypedModel(models.Model, metaclass=TypedModelMeta):
         if cls.__name__ not in all_types:
             errors.append(f"Type '{cls.__name__}' is not registered")
             
+        # Check table sharing for STI subclasses
+        if getattr(cls._meta, 'is_sti_subclass', False):
+            base_model = cls.get_sti_base_model()
+            if base_model:
+                base_table = base_model._meta.db_table
+                subclass_table = cls._meta.db_table
+                if base_table != subclass_table:
+                    errors.append(f"STI subclass {cls.__name__} table '{subclass_table}' doesn't match base table '{base_table}'")
+            
         return errors
+
+    @classmethod
+    def get_sti_table_info(cls) -> Dict[str, Any]:
+        """Get detailed information about STI table configuration."""
+        info = {
+            'model_name': cls.__name__,
+            'is_sti_model': cls.is_sti_model(),
+            'is_sti_base': getattr(cls._meta, 'is_sti_base', False),
+            'is_sti_subclass': getattr(cls._meta, 'is_sti_subclass', False),
+            'db_table': cls._meta.db_table,
+            'type_field_name': cls.get_type_field_name(),
+        }
+        
+        # Add base model info if this is a subclass
+        if info['is_sti_subclass']:
+            base_model = cls.get_sti_base_model()
+            if base_model:
+                info['base_model'] = base_model.__name__
+                info['base_table'] = base_model._meta.db_table
+                info['table_shared'] = info['db_table'] == info['base_table']
+        
+        # Add registered types if this is STI base
+        if info['is_sti_base'] or info['is_sti_subclass']:
+            info['registered_types'] = list(cls.get_all_types().keys())
+            
+        return info

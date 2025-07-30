@@ -144,6 +144,13 @@ def verify_sti_working():
 
 ### 5. Common Issues and Solutions
 
+**Issue: AttributeError: 'Options' object has no attribute 'get_db_table'**
+```python
+# This was a bug in the framework that has been fixed
+# Solution: Update to the latest version of django-sti-models
+# The fix simplifies table inheritance without overriding Django internals
+```
+
 **Issue: Separate tables still being created**
 ```python
 # Solution: Ensure base model is NOT abstract
@@ -165,6 +172,18 @@ class Business(TypedModel):
 for business in Business.objects.all():
     real_instance = business.get_real_instance()
     # real_instance will be the correct subclass type
+```
+
+**Issue: Migration creates separate tables**
+```python
+# Solution: Check STI setup before running migrations
+errors = YourModel.validate_sti_setup()
+if errors:
+    print(f"Fix these issues first: {errors}")
+
+# Also check table configuration
+table_info = YourModel.get_sti_table_info()
+print(f"Table configuration: {table_info}")
 ```
 
 ## New Features
