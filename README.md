@@ -26,7 +26,7 @@ pip install django-sti-models
 ```
 
 **Requirements:**
-- Django >= 4.2
+- Django >= 4.2, < 6.0
 - Python >= 3.8
 
 ## Quick Start
