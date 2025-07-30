@@ -123,12 +123,20 @@ class TypedModelMeta(ModelBase):
 
         # Process typed models
         # Check if any base is a TypedModel by checking for the model_type field
-        has_typed_model_base = any(
-            hasattr(base, '_meta') and 
-            hasattr(base._meta, 'fields_map') and
-            any(isinstance(field, TypeField) for field in base._meta.fields_map.values())
-            for base in bases
-        )
+        # Only process if Django's app registry is ready
+        try:
+            from django.apps import apps
+            apps.check_apps_ready()
+            
+            has_typed_model_base = any(
+                hasattr(base, '_meta') and 
+                hasattr(base._meta, 'fields_map') and
+                any(isinstance(field, TypeField) for field in base._meta.fields_map.values())
+                for base in bases
+            )
+        except Exception:
+            # Django app registry not ready, skip processing
+            has_typed_model_base = False
         
         if has_typed_model_base:
             mcs._setup_typed_model(cls)
@@ -138,6 +146,14 @@ class TypedModelMeta(ModelBase):
     @classmethod
     def _setup_typed_model(mcs, cls: Type[T]) -> None:
         """Set up a typed model with proper field configuration."""
+        # Only process if Django's app registry is ready
+        try:
+            from django.apps import apps
+            apps.check_apps_ready()
+        except Exception:
+            # Django app registry not ready, skip processing
+            return
+            
         # Find the base typed model (the one that has a TypeField)
         base_typed_model = None
         for base in cls.__mro__:
@@ -163,6 +179,14 @@ class TypedModelMeta(ModelBase):
     @classmethod
     def _setup_type_field(mcs, cls: Type[T], base_typed_model: Type[T]) -> None:
         """Set up the type field for the model."""
+        # Only process if Django's app registry is ready
+        try:
+            from django.apps import apps
+            apps.check_apps_ready()
+        except Exception:
+            # Django app registry not ready, skip processing
+            return
+            
         # Find the type field in the base model
         type_field_name = None
         for field_name, field in base_typed_model._meta.fields_map.items():
@@ -186,6 +210,14 @@ class TypedModelMeta(ModelBase):
     @classmethod
     def _register_type(mcs, cls: Type[T], base_typed_model: Type[T]) -> None:
         """Register the type with the base model."""
+        # Only process if Django's app registry is ready
+        try:
+            from django.apps import apps
+            apps.check_apps_ready()
+        except Exception:
+            # Django app registry not ready, skip processing
+            return
+            
         # Initialize typed_models if it doesn't exist
         if not hasattr(base_typed_model._meta, "typed_models"):
             base_typed_model._meta.typed_models = {}
@@ -200,6 +232,14 @@ class TypedModelMeta(ModelBase):
     @classmethod
     def _setup_manager(mcs, cls: Type[T]) -> None:
         """Set up the manager for the typed model."""
+        # Only process if Django's app registry is ready
+        try:
+            from django.apps import apps
+            apps.check_apps_ready()
+        except Exception:
+            # Django app registry not ready, skip processing
+            return
+            
         # Create a new manager instance
         manager = TypedModelManager()
         manager._set_typed_model_class(cls)
