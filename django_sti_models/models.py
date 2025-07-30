@@ -122,7 +122,15 @@ class TypedModelMeta(ModelBase):
             return cls
 
         # Process typed models
-        if TypedModel in bases or any(issubclass(base, TypedModel) for base in bases):
+        # Check if any base is a TypedModel by checking for the model_type field
+        has_typed_model_base = any(
+            hasattr(base, '_meta') and 
+            hasattr(base._meta, 'fields_map') and
+            any(isinstance(field, TypeField) for field in base._meta.fields_map.values())
+            for base in bases
+        )
+        
+        if has_typed_model_base:
             mcs._setup_typed_model(cls)
 
         return cls
@@ -130,10 +138,13 @@ class TypedModelMeta(ModelBase):
     @classmethod
     def _setup_typed_model(mcs, cls: Type[T]) -> None:
         """Set up a typed model with proper field configuration."""
-        # Find the base typed model (the one that inherits from TypedModel)
+        # Find the base typed model (the one that has a TypeField)
         base_typed_model = None
         for base in cls.__mro__:
-            if base is not cls and issubclass(base, TypedModel):
+            if (base is not cls and 
+                hasattr(base, '_meta') and 
+                hasattr(base._meta, 'fields_map') and
+                any(isinstance(field, TypeField) for field in base._meta.fields_map.values())):
                 base_typed_model = base
                 break
 
