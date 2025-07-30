@@ -2,6 +2,9 @@
 Test script to demonstrate STI working with Business models.
 """
 
+from .business_models import Business, BusinessExtension
+
+
 def test_business_sti():
     """Test that STI works correctly with Business models."""
     
