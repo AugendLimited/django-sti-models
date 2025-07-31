@@ -17,7 +17,7 @@ class AugendModel(models.Model):
 class Business(TypedModel, AugendModel):
     """
     Concrete STI base model - this creates the actual database table.
-    All subclasses will share this same table using the proxy approach.
+    All subclasses will share this same table using Django's proxy model approach.
     
     ✅ CRITICAL: This model must NOT be abstract for STI to work!
     """
@@ -34,18 +34,21 @@ class Business(TypedModel, AugendModel):
 
 class BusinessExtension(Business):
     """
-    STI subclass - shares the Business table via proxy approach.
+    STI subclass - shares the Business table via Django's proxy model approach.
     Django will NOT create a separate table for this model.
     
     The django-sti-models framework automatically:
-    1. Sets db_table = Business._meta.db_table
+    1. Sets proxy=True in the metaclass
     2. Filters queries by model_type = 'BusinessExtension'
     3. Manages the type field automatically
+    
+    ⚠️ Note: Fields on proxy subclasses must be nullable or have defaults!
     """
-    description = models.TextField(blank=True)
+    description = models.TextField(blank=True, null=True)  # Must be nullable!
 
     class Meta:
         verbose_name_plural = "Business Extensions"
+        # ✅ proxy=True is automatically set by the framework
 
     def __str__(self):
         return f"{self.name} (Extended)"

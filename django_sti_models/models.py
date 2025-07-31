@@ -83,26 +83,48 @@ class TypedModelManager(Manager[T]):
 
 
 class TypedModelMeta(ModelBase):
-    """Simple metaclass for STI models using proxy approach."""
+    """Metaclass for STI models using Django's proxy model approach."""
 
     def __new__(
         mcs, name: str, bases: tuple, namespace: Dict[str, Any], **kwargs: Any
     ) -> Type[T]:
         """Create a new typed model class."""
-        cls = super().__new__(mcs, name, bases, namespace, **kwargs)
-
-        # Skip abstract models and TypedModel itself
-        if (getattr(getattr(cls, 'Meta', None), 'abstract', False) or 
-            name == 'TypedModel'):
+        
+        # Skip TypedModel itself
+        if name == 'TypedModel':
+            cls = super().__new__(mcs, name, bases, namespace, **kwargs)
+            cls._meta.fields_from_subclasses = {}
             return cls
+
+        # Skip abstract models
+        Meta = namespace.get('Meta')
+        if Meta and getattr(Meta, 'abstract', False):
+            return super().__new__(mcs, name, bases, namespace, **kwargs)
 
         # Check if this inherits from a TypedModel
         typed_base = mcs._find_typed_base(bases)
         if typed_base:
+            # This is an STI subclass - force proxy=True BEFORE class creation
+            Meta = namespace.get('Meta', type('Meta', (), {}))
+            if hasattr(Meta, 'proxy') and getattr(Meta, 'proxy', False):
+                # User explicitly set proxy=True, treat as regular proxy
+                return super().__new__(mcs, name, bases, namespace, **kwargs)
+            
+            # Force proxy=True for STI behavior
+            Meta.proxy = True
+            namespace['Meta'] = Meta
+            
+            # Create the class
+            cls = super().__new__(mcs, name, bases, namespace, **kwargs)
+            cls._meta.fields_from_subclasses = {}
             mcs._setup_sti_subclass(cls, typed_base)
-        elif mcs._has_type_field(cls):
-            # This has a TypeField, making it a typed base
-            mcs._setup_sti_base(cls)
+        else:
+            # Create the class normally
+            cls = super().__new__(mcs, name, bases, namespace, **kwargs)
+            cls._meta.fields_from_subclasses = {}
+            if mcs._has_type_field(cls):
+                # This has a TypeField, making it a typed base
+                mcs._setup_sti_base(cls)
 
         return cls
 
@@ -161,12 +183,12 @@ class TypedModelMeta(ModelBase):
 
     @classmethod
     def _setup_sti_subclass(mcs, cls: Type[T], base: Type[T]) -> None:
-        """Set up an STI subclass using proxy approach."""
+        """Set up an STI subclass using Django's proxy model approach."""
         cls._meta.is_sti_subclass = True
         cls._meta.sti_base_model = base
         
-        # Use proxy approach - share table but not true proxy
-        cls._meta.db_table = base._meta.db_table
+        # Note: proxy=True is already set in __new__ before class creation
+        # This ensures Django creates no separate table for the subclass
         
         # Register with base model
         if hasattr(base._meta, 'typed_models'):
