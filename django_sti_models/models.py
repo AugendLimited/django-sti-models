@@ -235,8 +235,10 @@ class TypedModelMeta(ModelBase):
             cls._meta.type_field_name = type_field_name
             cls._meta.typed_models = {cls.__name__: cls}
         
-        # Set up manager
-        cls.objects = TypedModelManager()
+        # Set up manager and properly initialize it
+        manager = TypedModelManager()
+        manager.contribute_to_class(cls, 'objects')
+        cls.objects = manager
 
     @classmethod
     def _setup_sti_subclass(mcs, cls: Type[T], base: Type[T]) -> None:
@@ -255,8 +257,10 @@ class TypedModelMeta(ModelBase):
         if hasattr(base._meta, 'type_field_name'):
             cls._meta.type_field_name = base._meta.type_field_name
         
-        # Set up manager
-        cls.objects = TypedModelManager()
+        # Set up manager and properly initialize it
+        manager = TypedModelManager()
+        manager.contribute_to_class(cls, 'objects')
+        cls.objects = manager
 
 
 
