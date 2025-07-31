@@ -88,16 +88,29 @@ class TypedModelMeta(ModelBase):
     ) -> Type[T]:
         """Create a new typed model class."""
 
+        # Debug output
+        print(f"🔍 TypedModelMeta.__new__ called for: {name}")
+        print(
+            f"   Bases: {[b.__name__ if hasattr(b, '__name__') else str(b) for b in bases]}"
+        )
+
         # Handle Django app loading issues during setup
         try:
             from django.apps import apps
 
             if not apps.ready:
                 # During Django setup, just create the class normally
-                return super().__new__(mcs, name, bases, namespace, **kwargs)
+                print(f"   ⚠️ Django apps not ready, creating normally")
+                cls = super().__new__(mcs, name, bases, namespace, **kwargs)
+                # Mark for post-initialization setup
+                cls._needs_sti_setup = True
+                return cls
         except Exception:
             # If apps aren't available, create normally
-            return super().__new__(mcs, name, bases, namespace, **kwargs)
+            print(f"   ⚠️ Django apps exception, creating normally")
+            cls = super().__new__(mcs, name, bases, namespace, **kwargs)
+            cls._needs_sti_setup = True
+            return cls
 
         # Check what fields are in the namespace
         from django_sti_models.fields import TypeField
@@ -122,6 +135,9 @@ class TypedModelMeta(ModelBase):
 
         # Check if this inherits from a TypedModel
         typed_base = mcs._find_typed_base(bases)
+        print(
+            f"   🔍 Found typed_base: {typed_base.__name__ if typed_base else 'None'}"
+        )
 
         if typed_base:
             # This is an STI subclass - force proxy=True BEFORE class creation
@@ -220,6 +236,17 @@ class TypedModelMeta(ModelBase):
                     # This is an abstract base with TypeField - the concrete class should
                     # inherit the type field and become the STI base
                     return None  # Let the concrete class become the base
+
+                # Check if this base inherits from a TypedModel (for cases like AugendModel -> Business)
+                if hasattr(base, "__bases__"):
+                    for parent_base in base.__bases__:
+                        if (
+                            hasattr(parent_base, "__name__")
+                            and parent_base.__name__ == "TypedModel"
+                        ):
+                            # This base inherits from TypedModel, so it should be our STI base
+                            if not is_abstract:
+                                return base
         return None
 
     @classmethod
@@ -331,6 +358,35 @@ class TypedModel(models.Model, metaclass=TypedModelMeta):
 
     class Meta:
         abstract = True
+
+    @classmethod
+    def _setup_sti_post_init(cls):
+        """Post-initialization setup for STI models after Django is ready."""
+        if hasattr(cls, "_needs_sti_setup") and cls._needs_sti_setup:
+            print(f"🔧 Setting up STI for {cls.__name__}")
+
+            # Check if this inherits from a TypedModel
+            from django_sti_models.models import TypedModelMeta
+
+            typed_base = TypedModelMeta._find_typed_base(cls.__bases__)
+
+            if typed_base:
+                print(f"   📋 {cls.__name__} is STI subclass of {typed_base.__name__}")
+                # Set up as STI subclass
+                TypedModelMeta._setup_sti_subclass(cls, typed_base)
+            else:
+                # Check if this should be an STI base
+                from django_sti_models.fields import TypeField
+
+                has_type_field = any(
+                    isinstance(field, TypeField) for field in cls._meta.get_fields()
+                )
+                if has_type_field:
+                    print(f"   📋 {cls.__name__} is STI base")
+                    TypedModelMeta._setup_sti_base(cls)
+
+            # Clear the flag
+            cls._needs_sti_setup = False
 
     def save(self, *args: Any, **kwargs: Any) -> None:
         """Save the model, ensuring the type field is set."""
