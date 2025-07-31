@@ -93,6 +93,14 @@ class TypedModelMeta(ModelBase):
         print(f"\n🔍 DEBUG: Creating class '{name}'")
         print(f"   Bases: {[b.__name__ for b in bases]}")
         
+        # Debug: Check what fields are in the namespace
+        from django_sti_models.fields import TypeField
+        namespace_fields = {k: type(v).__name__ for k, v in namespace.items() 
+                          if hasattr(v, '__class__') and 'Field' in type(v).__name__}
+        typefield_in_namespace = any(isinstance(v, TypeField) for v in namespace.values())
+        print(f"   📝 Fields in namespace: {namespace_fields}")
+        print(f"   🎯 TypeField in namespace: {typefield_in_namespace}")
+        
         # Skip TypedModel itself
         if name == 'TypedModel':
             cls = super().__new__(mcs, name, bases, namespace, **kwargs)
