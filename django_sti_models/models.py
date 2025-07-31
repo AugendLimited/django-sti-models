@@ -112,7 +112,6 @@ class TypedModelMeta(ModelBase):
         typed_base = mcs._find_typed_base(bases)
 
         if typed_base:
-
             # This is an STI subclass - force proxy=True BEFORE class creation
             Meta = namespace.get('Meta', type('Meta', (), {}))
             if hasattr(Meta, 'proxy') and getattr(Meta, 'proxy', False):
@@ -174,8 +173,10 @@ class TypedModelMeta(ModelBase):
             # Create the class normally  
             cls = super().__new__(mcs, name, bases, namespace, **kwargs)
             cls._meta.fields_from_subclasses = {}
+            
+            # Check if this class has a TypeField (either declared or inherited)
             if typefield_in_namespace or typefield_in_inheritance:
-                # This has a TypeField (either declared or inherited), making it a typed base
+                # This has a TypeField, making it a typed base
                 mcs._setup_sti_base(cls)
 
         return cls
@@ -193,9 +194,20 @@ class TypedModelMeta(ModelBase):
                 has_type_field = mcs._has_type_field(base)
                 is_abstract = getattr(base._meta, 'abstract', False)
                 
-                # Only concrete STI bases (either already marked or having TypeField)
-                if (is_sti_base or has_type_field) and not is_abstract:
+                # If this base has a TypeField and is not abstract, it's our typed base
+                if has_type_field and not is_abstract:
                     return base
+                    
+                # If this base is already marked as an STI base, use it
+                if is_sti_base:
+                    return base
+                    
+                # If this base is abstract but has a TypeField, look for concrete subclasses
+                # that should inherit the type field
+                if has_type_field and is_abstract:
+                    # This is an abstract base with TypeField - the concrete class should
+                    # inherit the type field and become the STI base
+                    return None  # Let the concrete class become the base
         return None
 
     @classmethod
