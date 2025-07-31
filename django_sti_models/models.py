@@ -182,7 +182,10 @@ class TypedModelMeta(ModelBase):
             print(f"   🏗️ Creating normal class '{name}' (not STI subclass)")
             cls = super().__new__(mcs, name, bases, namespace, **kwargs)
             cls._meta.fields_from_subclasses = {}
-            if mcs._has_type_field(cls):
+            print(f"   🔍 About to check if '{name}' has TypeField...")
+            has_type_field = mcs._has_type_field(cls)
+            print(f"   📊 _has_type_field('{name}') returned: {has_type_field}")
+            if has_type_field:
                 # This has a TypeField, making it a typed base
                 print(f"   🎯 '{name}' has TypeField - setting up as STI BASE")
                 mcs._setup_sti_base(cls)
@@ -222,6 +225,7 @@ class TypedModelMeta(ModelBase):
     @classmethod
     def _has_type_field(mcs, cls: Type) -> bool:
         """Check if a class has a TypeField."""
+        print(f"🔥 CALLED _has_type_field for {cls.__name__}")
         print(f"       🔍 _has_type_field checking {cls.__name__}")
         if not hasattr(cls, '_meta'):
             print(f"       ❌ {cls.__name__} has no _meta")
