@@ -193,9 +193,8 @@ class TypedModelMeta(ModelBase):
                 print(f"   ✅ Class '{name}' created successfully")
                 cls._meta.fields_from_subclasses = {}
                 print(f"   🔍 About to check if '{name}' has TypeField...")
-                has_type_field = mcs._has_type_field(cls)
-                print(f"   📊 _has_type_field('{name}') returned: {has_type_field}")
-                if has_type_field:
+                print(f"   📊 Using typefield_in_namespace: {typefield_in_namespace}")
+                if typefield_in_namespace:
                     # This has a TypeField, making it a typed base
                     print(f"   🎯 '{name}' has TypeField - setting up as STI BASE")
                     mcs._setup_sti_base(cls)
