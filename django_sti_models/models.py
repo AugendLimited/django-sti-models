@@ -229,12 +229,20 @@ class TypedModelMeta(ModelBase):
                 if base.__name__ == 'TypedModel':
                     continue
                 
-                # Check for TypeField in this base class
-                for attr_name in dir(base):
-                    if not attr_name.startswith('_'):  # Skip private attributes
-                        attr = getattr(base, attr_name, None)
-                        if isinstance(attr, TypeField):
+                # Check for TypeField in this base class using _meta.get_fields()
+                # This handles both direct fields and inherited fields properly
+                try:
+                    fields = base._meta.get_fields()
+                    for field in fields:
+                        if isinstance(field, TypeField):
                             return True
+                except Exception:
+                    # Fallback: check for TypeField in this base class using dir()
+                    for attr_name in dir(base):
+                        if not attr_name.startswith('_'):  # Skip private attributes
+                            attr = getattr(base, attr_name, None)
+                            if isinstance(attr, TypeField):
+                                return True
                             
                 # Recursively check base's bases for inherited TypeField
                 if hasattr(base, '__bases__'):

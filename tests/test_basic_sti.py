@@ -39,7 +39,7 @@ class Business(TypedModel):
 
 class BusinessExtension(Business):
     """STI subclass."""
-    cif_number = models.CharField(max_length=255, blank=True)
+    cif_number = models.CharField(max_length=255, blank=True, default="")
     
     class Meta:
         app_label = 'test'
