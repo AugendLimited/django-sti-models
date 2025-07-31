@@ -94,6 +94,9 @@ class TypedModelMeta(ModelBase):
         from django_sti_models.fields import TypeField
         typefield_in_namespace = any(isinstance(v, TypeField) for v in namespace.values())
         
+        # Also check if TypeField is inherited from base classes
+        typefield_in_inheritance = mcs._has_typefield_in_bases(bases)
+        
         # Skip TypedModel itself
         if name == 'TypedModel':
             cls = super().__new__(mcs, name, bases, namespace, **kwargs)
@@ -171,8 +174,8 @@ class TypedModelMeta(ModelBase):
             # Create the class normally  
             cls = super().__new__(mcs, name, bases, namespace, **kwargs)
             cls._meta.fields_from_subclasses = {}
-            if typefield_in_namespace:
-                # This has a TypeField, making it a typed base
+            if typefield_in_namespace or typefield_in_inheritance:
+                # This has a TypeField (either declared or inherited), making it a typed base
                 mcs._setup_sti_base(cls)
 
         return cls
@@ -212,6 +215,31 @@ class TypedModelMeta(ModelBase):
                 attr = getattr(cls, attr_name, None)
                 if isinstance(attr, TypeField):
                     return True
+        
+        return False
+
+    @classmethod
+    def _has_typefield_in_bases(mcs, bases: tuple) -> bool:
+        """Check if any base class has a TypeField (for inheritance detection)."""
+        from django_sti_models.fields import TypeField
+        
+        for base in bases:
+            if hasattr(base, '__name__') and hasattr(base, '_meta'):
+                # Skip the abstract TypedModel itself
+                if base.__name__ == 'TypedModel':
+                    continue
+                
+                # Check for TypeField in this base class
+                for attr_name in dir(base):
+                    if not attr_name.startswith('_'):  # Skip private attributes
+                        attr = getattr(base, attr_name, None)
+                        if isinstance(attr, TypeField):
+                            return True
+                            
+                # Recursively check base's bases for inherited TypeField
+                if hasattr(base, '__bases__'):
+                    if mcs._has_typefield_in_bases(base.__bases__):
+                        return True
         
         return False
 
