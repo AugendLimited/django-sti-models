@@ -90,24 +90,30 @@ class TypedModelMeta(ModelBase):
     ) -> Type[T]:
         """Create a new typed model class."""
         
+        
         # Skip TypedModel itself
         if name == 'TypedModel':
             cls = super().__new__(mcs, name, bases, namespace, **kwargs)
             cls._meta.fields_from_subclasses = {}
+
             return cls
 
         # Skip abstract models
         Meta = namespace.get('Meta')
         if Meta and getattr(Meta, 'abstract', False):
+
             return super().__new__(mcs, name, bases, namespace, **kwargs)
 
         # Check if this inherits from a TypedModel
         typed_base = mcs._find_typed_base(bases)
+
         if typed_base:
+
             # This is an STI subclass - force proxy=True BEFORE class creation
             Meta = namespace.get('Meta', type('Meta', (), {}))
             if hasattr(Meta, 'proxy') and getattr(Meta, 'proxy', False):
                 # User explicitly set proxy=True, treat as regular proxy
+
                 return super().__new__(mcs, name, bases, namespace, **kwargs)
             
             # Extract declared fields from subclass
@@ -119,6 +125,7 @@ class TypedModelMeta(ModelBase):
                 for field_name, field_obj in list(namespace.items())
                 if isinstance(field_obj, Field)
             )
+
             
             # Validate and move fields to base class
             for field_name, field in list(declared_fields.items()):
@@ -126,8 +133,11 @@ class TypedModelMeta(ModelBase):
                 if not (field.many_to_many or field.null or field.has_default()):
                     raise FieldError(
                         f"All fields defined on STI subclasses must be nullable "
-                        f"or have a default set. Add null=True to the "
-                        f"{name}.{field_name} field definition."
+                        f"or have a default value. For {name}.{field_name}, either:\n"
+                        f"  - Add null=True (allows NULL in database)\n"
+                        f"  - Add default='...' (provides default value)\n"
+                        f"This prevents Multi-Table Inheritance (MTI) and ensures "
+                        f"true Single Table Inheritance (STI)."
                     )
                 
                 # Check if field already exists on base class
@@ -170,13 +180,20 @@ class TypedModelMeta(ModelBase):
 
     @classmethod
     def _find_typed_base(mcs, bases: tuple) -> Optional[Type[T]]:
-        """Find a TypedModel base class."""
+        """Find a concrete STI base class (not the abstract TypedModel)."""
         for base in bases:
-            if (hasattr(base, '__name__') and 
-                hasattr(base, '_meta') and
-                (getattr(base._meta, 'is_sti_base', False) or
-                 mcs._has_type_field(base))):
-                return base
+            if hasattr(base, '__name__') and hasattr(base, '_meta'):
+                # Skip the abstract TypedModel itself
+                if base.__name__ == 'TypedModel':
+                    continue
+                    
+                is_sti_base = getattr(base._meta, 'is_sti_base', False)
+                has_type_field = mcs._has_type_field(base)
+                is_abstract = getattr(base._meta, 'abstract', False)
+                
+                # Only concrete STI bases (either already marked or having TypeField)
+                if (is_sti_base or has_type_field) and not is_abstract:
+                    return base
         return None
 
     @classmethod
