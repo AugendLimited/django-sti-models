@@ -81,183 +81,50 @@ class TypedModelManager(Manager[T]):
 
 
 class TypedModelMeta(ModelBase):
-    """Metaclass for STI models using Django's proxy model approach."""
+    """Metaclass for STI models using Django's class_prepared signal approach."""
 
     def __new__(
         mcs, name: str, bases: tuple, namespace: Dict[str, Any], **kwargs: Any
     ) -> Type[T]:
         """Create a new typed model class."""
-
-        # Debug output
-        print(f"🔍 TypedModelMeta.__new__ called for: {name}")
-        print(
-            f"   Bases: {[b.__name__ if hasattr(b, '__name__') else str(b) for b in bases]}"
-        )
-
-        # Handle Django app loading issues during setup
-        try:
-            from django.apps import apps
-
-            if not apps.ready:
-                # During Django setup, just create the class normally
-                print(f"   ⚠️ Django apps not ready, creating normally")
-                cls = super().__new__(mcs, name, bases, namespace, **kwargs)
-                # Mark for post-initialization setup
-                cls._needs_sti_setup = True
-                return cls
-        except Exception:
-            # If apps aren't available, create normally
-            print(f"   ⚠️ Django apps exception, creating normally")
-            cls = super().__new__(mcs, name, bases, namespace, **kwargs)
-            cls._needs_sti_setup = True
-            return cls
-
-        # Check what fields are in the namespace
-        from django_sti_models.fields import TypeField
-
-        typefield_in_namespace = any(
-            isinstance(v, TypeField) for v in namespace.values()
-        )
-
-        # Also check if TypeField is inherited from base classes
-        typefield_in_inheritance = mcs._has_typefield_in_bases(bases)
-
-        # Skip TypedModel itself
-        if name == "TypedModel":
-            cls = super().__new__(mcs, name, bases, namespace, **kwargs)
-            cls._meta.fields_from_subclasses = {}
-            return cls
-
-        # Skip abstract models
-        Meta = namespace.get("Meta")
-        if Meta and getattr(Meta, "abstract", False):
-            return super().__new__(mcs, name, bases, namespace, **kwargs)
-
-        # Check if this inherits from a TypedModel
-        typed_base = mcs._find_typed_base(bases)
-        print(
-            f"   🔍 Found typed_base: {typed_base.__name__ if typed_base else 'None'}"
-        )
-
-        if typed_base:
-            # This is an STI subclass - force proxy=True BEFORE class creation
-            Meta = namespace.get("Meta", type("Meta", (), {}))
-            if hasattr(Meta, "proxy") and getattr(Meta, "proxy", False):
-                # User explicitly set proxy=True, treat as regular proxy
-                return super().__new__(mcs, name, bases, namespace, **kwargs)
-
-            # Extract declared fields from subclass
-            from django.core.exceptions import FieldError
-            from django.db.models.fields import Field
-
-            declared_fields = dict(
-                (field_name, field_obj)
-                for field_name, field_obj in list(namespace.items())
-                if isinstance(field_obj, Field)
-            )
-
-            # Validate and move fields to base class
-            for field_name, field in list(declared_fields.items()):
-                # Fields on STI subclasses must be nullable or have defaults
-                if not (field.many_to_many or field.null or field.has_default()):
-                    raise FieldError(
-                        f"All fields defined on STI subclasses must be nullable "
-                        f"or have a default value. For {name}.{field_name}, either:\n"
-                        f"  - Add null=True (allows NULL in database)\n"
-                        f"  - Add default='...' (provides default value)\n"
-                        f"This prevents Multi-Table Inheritance (MTI) and ensures "
-                        f"true Single Table Inheritance (STI)."
-                    )
-
-                # Check if field already exists on base class
-                try:
-                    existing_field = typed_base._meta.get_field(field_name)
-                    # Check if it's exactly the same field
-                    if existing_field.deconstruct()[1:] != field.deconstruct()[1:]:
-                        raise ValueError(
-                            f"Field '{field_name}' from '{name}' conflicts with "
-                            f"existing field on '{typed_base.__name__}'"
-                        )
-                except Exception:
-                    # Field doesn't exist, add it to base class
-                    field.contribute_to_class(typed_base, field_name)
-
-                # Remove field from subclass namespace
-                namespace.pop(field_name)
-
-            # Track fields added from subclasses
-            if hasattr(typed_base._meta, "fields_from_subclasses"):
-                typed_base._meta.fields_from_subclasses.update(declared_fields)
-
-            # Force proxy=True for STI behavior
-            Meta.proxy = True
-            namespace["Meta"] = Meta
-
-            # Create the class
-            cls = super().__new__(mcs, name, bases, namespace, **kwargs)
-            cls._meta.fields_from_subclasses = {}
-            mcs._setup_sti_subclass(cls, typed_base)
-        else:
-            # Create the class normally
-            cls = super().__new__(mcs, name, bases, namespace, **kwargs)
-            cls._meta.fields_from_subclasses = {}
-
-            # Check if this class has a TypeField (either declared or inherited)
-            if typefield_in_namespace or typefield_in_inheritance:
-                # This has a TypeField, making it a typed base
-                mcs._setup_sti_base(cls)
-
+        
+        # Create the class normally - let Django handle inheritance
+        cls = super().__new__(mcs, name, bases, namespace, **kwargs)
+        
+        # Connect to class_prepared signal to set up STI after Django is done
+        models.signals.class_prepared.connect(mcs._setup_sti_after_prepared, sender=cls)
+        
         return cls
 
     @classmethod
-    def _find_typed_base(mcs, bases: tuple) -> Optional[Type[T]]:
-        """Find a concrete STI base class (not the abstract TypedModel)."""
-        for base in bases:
-            if hasattr(base, "__name__") and hasattr(base, "_meta"):
-                # Skip the abstract TypedModel itself
-                if base.__name__ == "TypedModel":
-                    continue
-
-                is_sti_base = getattr(base._meta, "is_sti_base", False)
-                has_type_field = mcs._has_type_field(base)
-                is_abstract = getattr(base._meta, "abstract", False)
-
-                # If this base has a TypeField and is not abstract, it's our typed base
-                if has_type_field and not is_abstract:
-                    return base
-
-                # If this base is already marked as an STI base, use it
-                if is_sti_base:
-                    return base
-
-                # If this base is abstract but has a TypeField, look for concrete subclasses
-                # that should inherit the type field
-                if has_type_field and is_abstract:
-                    # This is an abstract base with TypeField - the concrete class should
-                    # inherit the type field and become the STI base
-                    return None  # Let the concrete class become the base
-
-                # Check if this base inherits from a TypedModel (for cases like AugendModel -> Business)
-                if hasattr(base, "__bases__"):
-                    for parent_base in base.__bases__:
-                        if (
-                            hasattr(parent_base, "__name__")
-                            and parent_base.__name__ == "TypedModel"
-                        ):
-                            # This base inherits from TypedModel, so it should be our STI base
-                            if not is_abstract:
-                                return base
-        return None
+    def _setup_sti_after_prepared(mcs, sender: Type[T], **kwargs: Any) -> None:
+        """Set up STI after Django has prepared the model class."""
+        
+        # Skip abstract models - they don't create tables
+        if getattr(sender._meta, "abstract", False):
+            return
+            
+        # Skip TypedModel itself
+        if sender.__name__ == "TypedModel":
+            return
+            
+        # Check if this model has a TypeField (either declared or inherited)
+        has_type_field = mcs._has_type_field(sender)
+        
+        if has_type_field:
+            # This is an STI base model
+            mcs._setup_sti_base(sender)
+        else:
+            # Check if this inherits from an STI base
+            sti_base = mcs._find_sti_base(sender)
+            if sti_base:
+                mcs._setup_sti_subclass(sender, sti_base)
 
     @classmethod
-    def _has_type_field(mcs, cls: Type) -> bool:
+    def _has_type_field(mcs, cls: Type[T]) -> bool:
         """Check if a class has a TypeField."""
-        if not hasattr(cls, "_meta"):
-            return False
-
         try:
-            fields = cls._meta.get_fields()
-            for field in fields:
+            for field in cls._meta.get_fields():
                 if isinstance(field, TypeField):
                     return True
         except Exception:
@@ -266,41 +133,15 @@ class TypedModelMeta(ModelBase):
                 attr = getattr(cls, attr_name, None)
                 if isinstance(attr, TypeField):
                     return True
-
         return False
 
     @classmethod
-    def _has_typefield_in_bases(mcs, bases: tuple) -> bool:
-        """Check if any base class has a TypeField (for inheritance detection)."""
-        from django_sti_models.fields import TypeField
-
-        for base in bases:
-            if hasattr(base, "__name__") and hasattr(base, "_meta"):
-                # Skip the abstract TypedModel itself
-                if base.__name__ == "TypedModel":
-                    continue
-
-                # Check for TypeField in this base class using _meta.get_fields()
-                # This handles both direct fields and inherited fields properly
-                try:
-                    fields = base._meta.get_fields()
-                    for field in fields:
-                        if isinstance(field, TypeField):
-                            return True
-                except Exception:
-                    # Fallback: check for TypeField in this base class using dir()
-                    for attr_name in dir(base):
-                        if not attr_name.startswith("_"):  # Skip private attributes
-                            attr = getattr(base, attr_name, None)
-                            if isinstance(attr, TypeField):
-                                return True
-
-                # Recursively check base's bases for inherited TypeField
-                if hasattr(base, "__bases__"):
-                    if mcs._has_typefield_in_bases(base.__bases__):
-                        return True
-
-        return False
+    def _find_sti_base(mcs, cls: Type[T]) -> Optional[Type[T]]:
+        """Find the STI base class for this model."""
+        for base in cls.__bases__:
+            if hasattr(base, "_meta") and getattr(base._meta, "is_sti_base", False):
+                return base
+        return None
 
     @classmethod
     def _setup_sti_base(mcs, cls: Type[T]) -> None:
@@ -333,8 +174,8 @@ class TypedModelMeta(ModelBase):
         cls._meta.is_sti_subclass = True
         cls._meta.sti_base_model = base
 
-        # Note: proxy=True is already set in __new__ before class creation
-        # This ensures Django creates no separate table for the subclass
+        # Force proxy=True for STI behavior
+        cls._meta.proxy = True
 
         # Register with base model
         if hasattr(base._meta, "typed_models"):
@@ -358,35 +199,6 @@ class TypedModel(models.Model, metaclass=TypedModelMeta):
 
     class Meta:
         abstract = True
-
-    @classmethod
-    def _setup_sti_post_init(cls):
-        """Post-initialization setup for STI models after Django is ready."""
-        if hasattr(cls, "_needs_sti_setup") and cls._needs_sti_setup:
-            print(f"🔧 Setting up STI for {cls.__name__}")
-
-            # Check if this inherits from a TypedModel
-            from django_sti_models.models import TypedModelMeta
-
-            typed_base = TypedModelMeta._find_typed_base(cls.__bases__)
-
-            if typed_base:
-                print(f"   📋 {cls.__name__} is STI subclass of {typed_base.__name__}")
-                # Set up as STI subclass
-                TypedModelMeta._setup_sti_subclass(cls, typed_base)
-            else:
-                # Check if this should be an STI base
-                from django_sti_models.fields import TypeField
-
-                has_type_field = any(
-                    isinstance(field, TypeField) for field in cls._meta.get_fields()
-                )
-                if has_type_field:
-                    print(f"   📋 {cls.__name__} is STI base")
-                    TypedModelMeta._setup_sti_base(cls)
-
-            # Clear the flag
-            cls._needs_sti_setup = False
 
     def save(self, *args: Any, **kwargs: Any) -> None:
         """Save the model, ensuring the type field is set."""
