@@ -8,15 +8,15 @@ This implementation provides clean STI with:
 - Custom type field names
 """
 
-from typing import Any, Dict, List, Optional, Type, TypeVar
+from typing import Any, Dict, Optional, Type, TypeVar
 
-from django.core.exceptions import ObjectDoesNotExist
+
 from django.db import models
 from django.db.models.base import ModelBase
 from django.db.models.manager import Manager
-from django.utils.translation import gettext_lazy as _
 
-from .exceptions import STIException
+
+
 from .fields import TypeField
 
 T = TypeVar("T", bound="TypedModel")
@@ -66,7 +66,7 @@ class TypedModelManager(Manager[T]):
             for field in self.model_class._meta.get_fields():
                 if isinstance(field, TypeField):
                     return field.name
-        except:
+        except Exception:
             # Fallback to default
             return "model_type"
                 
@@ -90,42 +90,30 @@ class TypedModelMeta(ModelBase):
     ) -> Type[T]:
         """Create a new typed model class."""
         
-        print(f"\n🔍 DEBUG: Creating class '{name}'")
-        print(f"   Bases: {[b.__name__ for b in bases]}")
-        
-        # Debug: Check what fields are in the namespace
+        # Check what fields are in the namespace
         from django_sti_models.fields import TypeField
-        namespace_fields = {k: type(v).__name__ for k, v in namespace.items() 
-                          if hasattr(v, '__class__') and 'Field' in type(v).__name__}
         typefield_in_namespace = any(isinstance(v, TypeField) for v in namespace.values())
-        print(f"   📝 Fields in namespace: {namespace_fields}")
-        print(f"   🎯 TypeField in namespace: {typefield_in_namespace}")
         
         # Skip TypedModel itself
         if name == 'TypedModel':
             cls = super().__new__(mcs, name, bases, namespace, **kwargs)
             cls._meta.fields_from_subclasses = {}
-            print(f"   ✅ Created TypedModel base class")
             return cls
 
         # Skip abstract models
         Meta = namespace.get('Meta')
         if Meta and getattr(Meta, 'abstract', False):
-            print(f"   ⏭️ Skipping abstract model '{name}'")
             return super().__new__(mcs, name, bases, namespace, **kwargs)
 
         # Check if this inherits from a TypedModel
         typed_base = mcs._find_typed_base(bases)
-        print(f"   🔎 typed_base found: {typed_base.__name__ if typed_base else 'None'}")
 
         if typed_base:
-            print(f"   🎯 '{name}' is STI SUBCLASS of '{typed_base.__name__}'")
 
             # This is an STI subclass - force proxy=True BEFORE class creation
             Meta = namespace.get('Meta', type('Meta', (), {}))
             if hasattr(Meta, 'proxy') and getattr(Meta, 'proxy', False):
                 # User explicitly set proxy=True, treat as regular proxy
-                print(f"   ⚠️ User set proxy=True explicitly for '{name}' - treating as regular proxy")
                 return super().__new__(mcs, name, bases, namespace, **kwargs)
             
             # Extract declared fields from subclass
@@ -137,7 +125,6 @@ class TypedModelMeta(ModelBase):
                 for field_name, field_obj in list(namespace.items())
                 if isinstance(field_obj, Field)
             )
-            print(f"   📝 Fields found on '{name}': {list(declared_fields.keys())}")
             
             # Validate and move fields to base class
             for field_name, field in list(declared_fields.items()):
@@ -161,13 +148,11 @@ class TypedModelMeta(ModelBase):
                             f"Field '{field_name}' from '{name}' conflicts with "
                             f"existing field on '{typed_base.__name__}'"
                         )
-                except:
+                except Exception:
                     # Field doesn't exist, add it to base class
-                    print(f"   🔄 Moving field '{field_name}' from '{name}' to '{typed_base.__name__}'")
                     field.contribute_to_class(typed_base, field_name)
                 
                 # Remove field from subclass namespace
-                print(f"   🗑️ Removing field '{field_name}' from '{name}' namespace")
                 namespace.pop(field_name)
             
             # Track fields added from subclasses
@@ -175,93 +160,59 @@ class TypedModelMeta(ModelBase):
                 typed_base._meta.fields_from_subclasses.update(declared_fields)
             
             # Force proxy=True for STI behavior
-            print(f"   🎭 Setting proxy=True for '{name}'")
             Meta.proxy = True
             namespace['Meta'] = Meta
             
             # Create the class
-            print(f"   🏗️ Creating STI subclass '{name}' with proxy=True")
             cls = super().__new__(mcs, name, bases, namespace, **kwargs)
             cls._meta.fields_from_subclasses = {}
-            print(f"   ✅ Created '{name}', proxy status: {getattr(cls._meta, 'proxy', False)}")
             mcs._setup_sti_subclass(cls, typed_base)
         else:
             # Create the class normally  
-            print(f"   🏗️ Creating normal class '{name}' (not STI subclass)")
-            try:
-                cls = super().__new__(mcs, name, bases, namespace, **kwargs)
-                print(f"   ✅ Class '{name}' created successfully")
-                cls._meta.fields_from_subclasses = {}
-                print(f"   🔍 About to check if '{name}' has TypeField...")
-                print(f"   📊 Using typefield_in_namespace: {typefield_in_namespace}")
-                if typefield_in_namespace:
-                    # This has a TypeField, making it a typed base
-                    print(f"   🎯 '{name}' has TypeField - setting up as STI BASE")
-                    mcs._setup_sti_base(cls)
-                else:
-                    print(f"   ❌ '{name}' has no TypeField")
-            except Exception as e:
-                print(f"   💥 EXCEPTION during '{name}' creation: {e}")
-                print(f"   📍 Exception type: {type(e)}")
-                raise
+            cls = super().__new__(mcs, name, bases, namespace, **kwargs)
+            cls._meta.fields_from_subclasses = {}
+            if typefield_in_namespace:
+                # This has a TypeField, making it a typed base
+                mcs._setup_sti_base(cls)
 
         return cls
 
     @classmethod
     def _find_typed_base(mcs, bases: tuple) -> Optional[Type[T]]:
         """Find a concrete STI base class (not the abstract TypedModel)."""
-        print(f"   🔍 _find_typed_base checking: {[b.__name__ for b in bases]}")
         for base in bases:
             if hasattr(base, '__name__') and hasattr(base, '_meta'):
-                print(f"     📋 Checking base: {base.__name__}")
-                
                 # Skip the abstract TypedModel itself
                 if base.__name__ == 'TypedModel':
-                    print(f"       ⏭️ Skipping abstract TypedModel")
                     continue
                     
                 is_sti_base = getattr(base._meta, 'is_sti_base', False)
                 has_type_field = mcs._has_type_field(base)
                 is_abstract = getattr(base._meta, 'abstract', False)
                 
-                print(f"       📊 {base.__name__}: is_sti_base={is_sti_base}, has_type_field={has_type_field}, abstract={is_abstract}")
-                
                 # Only concrete STI bases (either already marked or having TypeField)
                 if (is_sti_base or has_type_field) and not is_abstract:
-                    print(f"       ✅ Found typed base: {base.__name__}")
                     return base
-                else:
-                    print(f"       ❌ {base.__name__} not qualified as STI base")
-        print(f"   ❌ No concrete STI base found")
         return None
 
     @classmethod
     def _has_type_field(mcs, cls: Type) -> bool:
         """Check if a class has a TypeField."""
-        print(f"🔥 CALLED _has_type_field for {cls.__name__}")
-        print(f"       🔍 _has_type_field checking {cls.__name__}")
         if not hasattr(cls, '_meta'):
-            print(f"       ❌ {cls.__name__} has no _meta")
             return False
         
         try:
             fields = cls._meta.get_fields()
-            print(f"       📝 {cls.__name__} fields via get_fields(): {[f.name for f in fields]}")
             for field in fields:
                 if isinstance(field, TypeField):
-                    print(f"       ✅ Found TypeField: {field.name}")
                     return True
-        except Exception as e:
-            print(f"       ⚠️ get_fields() failed for {cls.__name__}: {e}")
+        except Exception:
             # Fallback to check declared fields
-            print(f"       🔄 Fallback: checking dir({cls.__name__})")
             for attr_name in dir(cls):
                 attr = getattr(cls, attr_name, None)
                 if isinstance(attr, TypeField):
-                    print(f"       ✅ Found TypeField via dir(): {attr_name}")
                     return True
         
-        print(f"       ❌ No TypeField found in {cls.__name__}")
         return False
 
     @classmethod
@@ -276,7 +227,7 @@ class TypedModelMeta(ModelBase):
                 if isinstance(field, TypeField):
                     type_field_name = field.name
                     break
-        except:
+        except Exception:
             # Fallback if get_fields() fails
             type_field_name = "model_type"
         
