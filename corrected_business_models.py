@@ -46,6 +46,7 @@ class BusinessExtension(Business):
     ✅ Fields on subclasses are automatically moved to the base table!
     """
     description = models.TextField(blank=True, default="")  # Will be moved to base class!
+    cif_number = models.CharField(max_length=255, blank=True, default="")  # Will be moved to base class!
 
     class Meta:
         verbose_name_plural = "Business Extensions"
