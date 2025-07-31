@@ -180,17 +180,23 @@ class TypedModelMeta(ModelBase):
         else:
             # Create the class normally  
             print(f"   🏗️ Creating normal class '{name}' (not STI subclass)")
-            cls = super().__new__(mcs, name, bases, namespace, **kwargs)
-            cls._meta.fields_from_subclasses = {}
-            print(f"   🔍 About to check if '{name}' has TypeField...")
-            has_type_field = mcs._has_type_field(cls)
-            print(f"   📊 _has_type_field('{name}') returned: {has_type_field}")
-            if has_type_field:
-                # This has a TypeField, making it a typed base
-                print(f"   🎯 '{name}' has TypeField - setting up as STI BASE")
-                mcs._setup_sti_base(cls)
-            else:
-                print(f"   ❌ '{name}' has no TypeField")
+            try:
+                cls = super().__new__(mcs, name, bases, namespace, **kwargs)
+                print(f"   ✅ Class '{name}' created successfully")
+                cls._meta.fields_from_subclasses = {}
+                print(f"   🔍 About to check if '{name}' has TypeField...")
+                has_type_field = mcs._has_type_field(cls)
+                print(f"   📊 _has_type_field('{name}') returned: {has_type_field}")
+                if has_type_field:
+                    # This has a TypeField, making it a typed base
+                    print(f"   🎯 '{name}' has TypeField - setting up as STI BASE")
+                    mcs._setup_sti_base(cls)
+                else:
+                    print(f"   ❌ '{name}' has no TypeField")
+            except Exception as e:
+                print(f"   💥 EXCEPTION during '{name}' creation: {e}")
+                print(f"   📍 Exception type: {type(e)}")
+                raise
 
         return cls
 
