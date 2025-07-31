@@ -110,6 +110,46 @@ class TypedModelMeta(ModelBase):
                 # User explicitly set proxy=True, treat as regular proxy
                 return super().__new__(mcs, name, bases, namespace, **kwargs)
             
+            # Extract declared fields from subclass
+            from django.db.models.fields import Field
+            from django.core.exceptions import FieldError
+            
+            declared_fields = dict(
+                (field_name, field_obj)
+                for field_name, field_obj in list(namespace.items())
+                if isinstance(field_obj, Field)
+            )
+            
+            # Validate and move fields to base class
+            for field_name, field in list(declared_fields.items()):
+                # Fields on STI subclasses must be nullable or have defaults
+                if not (field.many_to_many or field.null or field.has_default()):
+                    raise FieldError(
+                        f"All fields defined on STI subclasses must be nullable "
+                        f"or have a default set. Add null=True to the "
+                        f"{name}.{field_name} field definition."
+                    )
+                
+                # Check if field already exists on base class
+                try:
+                    existing_field = typed_base._meta.get_field(field_name)
+                    # Check if it's exactly the same field
+                    if existing_field.deconstruct()[1:] != field.deconstruct()[1:]:
+                        raise ValueError(
+                            f"Field '{field_name}' from '{name}' conflicts with "
+                            f"existing field on '{typed_base.__name__}'"
+                        )
+                except:
+                    # Field doesn't exist, add it to base class
+                    field.contribute_to_class(typed_base, field_name)
+                
+                # Remove field from subclass namespace
+                namespace.pop(field_name)
+            
+            # Track fields added from subclasses
+            if hasattr(typed_base._meta, 'fields_from_subclasses'):
+                typed_base._meta.fields_from_subclasses.update(declared_fields)
+            
             # Force proxy=True for STI behavior
             Meta.proxy = True
             namespace['Meta'] = Meta

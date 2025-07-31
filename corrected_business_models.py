@@ -38,13 +38,14 @@ class BusinessExtension(Business):
     Django will NOT create a separate table for this model.
     
     The django-sti-models framework automatically:
-    1. Sets proxy=True in the metaclass
-    2. Filters queries by model_type = 'BusinessExtension'
-    3. Manages the type field automatically
+    1. Moves fields from subclass to base class during metaclass processing  
+    2. Sets proxy=True in the metaclass
+    3. Filters queries by model_type = 'BusinessExtension'
+    4. Manages the type field automatically
     
-    ⚠️ Note: Fields on proxy subclasses must be nullable or have defaults!
+    ✅ Fields on subclasses are automatically moved to the base table!
     """
-    description = models.TextField(blank=True, null=True)  # Must be nullable!
+    description = models.TextField(blank=True, null=True)  # Will be moved to base class!
 
     class Meta:
         verbose_name_plural = "Business Extensions"
