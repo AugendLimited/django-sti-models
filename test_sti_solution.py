@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Test the STI solution with the user's exact model structure.
+Test the STI solution with the user's exact model structure using ContentType.
 """
 
 import os
@@ -19,14 +19,14 @@ if not settings.configured:
             }
         },
         USE_TZ=True,
-        INSTALLED_APPS=['django_sti_models'],
+        INSTALLED_APPS=['django_sti_models', 'django.contrib.contenttypes'],
     )
 
 django.setup()
 
 # Import after Django setup
 from django.db import models, connection
-from django_sti_models import TypedModel, TypeField
+from django_sti_models import TypedModel
 
 # Mock the AugendModel and other dependencies
 class AuditableModel(models.Model):
@@ -36,10 +36,8 @@ class AuditableModel(models.Model):
     class Meta:
         abstract = True
 
-# Your exact AugendModel
+# Your exact AugendModel - NO model_type field needed!
 class AugendModel(TypedModel):
-    model_type = TypeField()
-
     class Meta:
         abstract = True
 
@@ -65,45 +63,29 @@ class BusinessExtension(Business):
 
 def test_sti_solution():
     """Test that the STI solution works correctly."""
-    print("🧪 Testing STI Solution with User's Model Structure\n")
+    print("🧪 Testing STI Solution with ContentType Approach\n")
     
-    # Check that Business is set up as STI base
+    # Check that Business is set up as STI model
     print("📝 Checking Business model:")
-    assert hasattr(Business._meta, 'is_sti_base'), "Business should be marked as STI base"
-    assert Business._meta.is_sti_base, "Business should be marked as STI base"
-    print("  ✅ Business is marked as STI base")
+    assert hasattr(Business._meta, 'is_sti_model'), "Business should be marked as STI model"
+    assert Business._meta.is_sti_model, "Business should be marked as STI model"
+    print("  ✅ Business is marked as STI model")
     
-    assert hasattr(Business._meta, 'type_field_name'), "Business should have type_field_name"
-    assert Business._meta.type_field_name == 'model_type', "Type field name should be 'model_type'"
-    print("  ✅ Business has type_field_name")
-    
-    assert hasattr(Business._meta, 'typed_models'), "Business should have typed_models registry"
-    assert 'Business' in Business._meta.typed_models, "Business should be in typed_models"
-    print("  ✅ Business has typed_models registry")
-    
-    # Check that BusinessExtension is set up as STI subclass
+    # Check that BusinessExtension is also set up as STI model
     print("\n📝 Checking BusinessExtension model:")
-    assert hasattr(BusinessExtension._meta, 'is_sti_subclass'), "BusinessExtension should be marked as STI subclass"
-    assert BusinessExtension._meta.is_sti_subclass, "BusinessExtension should be marked as STI subclass"
-    print("  ✅ BusinessExtension is marked as STI subclass")
-    
-    assert BusinessExtension._meta.proxy, "BusinessExtension should be a proxy model"
-    print("  ✅ BusinessExtension is a proxy model")
-    
-    assert BusinessExtension._meta.sti_base_model == Business, "BusinessExtension should point to Business as base"
-    print("  ✅ BusinessExtension points to Business as base")
-    
-    # Check that it's registered with the base
-    assert 'BusinessExtension' in Business._meta.typed_models, "BusinessExtension should be registered"
-    print("  ✅ BusinessExtension is registered with Business")
+    assert hasattr(BusinessExtension._meta, 'is_sti_model'), "BusinessExtension should be marked as STI model"
+    assert BusinessExtension._meta.is_sti_model, "BusinessExtension should be marked as STI model"
+    print("  ✅ BusinessExtension is marked as STI model")
     
     # Test creating instances
     print("\n📝 Testing instance creation:")
     business = Business.objects.create(name="Test Business")
     print(f"  ✅ Created Business: {business}")
+    print(f"  ✅ Business polymorphic_ctype: {business.polymorphic_ctype}")
     
     extension = BusinessExtension.objects.create(name="Test Extension", description="Test Description")
     print(f"  ✅ Created BusinessExtension: {extension}")
+    print(f"  ✅ Extension polymorphic_ctype: {extension.polymorphic_ctype}")
     
     # Test that they share the same table
     print("\n📝 Testing table sharing:")
@@ -116,6 +98,24 @@ def test_sti_solution():
         business_tables = [t for t in tables if 'business' in t.lower()]
         assert len(business_tables) == 1, f"Should only have one Business table, found: {business_tables}"
         print(f"  ✅ Only one Business table found: {business_tables[0]}")
+    
+    # Test type-aware querying
+    print("\n📝 Testing type-aware querying:")
+    all_businesses = Business.objects.all()
+    print(f"  ✅ All businesses: {list(all_businesses)}")
+    
+    all_extensions = BusinessExtension.objects.all()
+    print(f"  ✅ All extensions: {list(all_extensions)}")
+    
+    # Test getting real instance class
+    print("\n📝 Testing real instance class:")
+    real_business_class = business.get_real_instance_class()
+    print(f"  ✅ Business real class: {real_business_class}")
+    assert real_business_class == Business, "Should return Business class"
+    
+    real_extension_class = extension.get_real_instance_class()
+    print(f"  ✅ Extension real class: {real_extension_class}")
+    assert real_extension_class == BusinessExtension, "Should return BusinessExtension class"
     
     print("\n🎉 STI Solution Test Passed!")
 
